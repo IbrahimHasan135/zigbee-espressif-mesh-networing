@@ -20,6 +20,7 @@ public:
     void runMainLoop();
 
     esp_err_t startCommissioning(ezb_bdb_comm_mode_mask_t mode_mask);
+    esp_err_t postCommissioning(ezb_bdb_comm_mode_mask_t mode_mask);
     esp_err_t setRxOnWhenIdle(bool enabled);
     esp_err_t sendPingResponse(uint16_t dst_short_addr, const uint8_t *payload, uint8_t payload_len);
 
@@ -32,6 +33,9 @@ public:
     bool isNetworkReady() const;
 
 private:
+    static void commissioningTaskCallback(void *ctx);
+
+    ezb_bdb_comm_mode_mask_t pending_commissioning_mode_ = 0;
     bool initialized_ = false;
     bool network_ready_ = false;
 };

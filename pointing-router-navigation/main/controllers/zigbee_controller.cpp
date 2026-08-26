@@ -5,10 +5,13 @@
 #include "freertos/task.h"
 
 #include "config/app_config.h"
+#include "config/zigbee_config.h"
 
 namespace {
 
 constexpr char kTag[] = "ZigbeeController";
+constexpr uint32_t kSteeringRetryTaskStackSize = 3072;
+constexpr UBaseType_t kSteeringRetryTaskPriority = 4;
 
 } // namespace
 
@@ -82,10 +85,12 @@ bool ZigbeeController::handleAppSignal(const ezb_app_signal_t *signal)
                 esp_err_t err = zigbee_driver_.startCommissioning(EZB_BDB_MODE_NETWORK_STEERING);
                 if (err != ESP_OK) {
                     ESP_LOGE(kTag, "network steering start failed: %s", esp_err_to_name(err));
+                    scheduleSteeringRetry();
                 }
             } else {
                 ESP_LOGI(kTag, "router network restored");
                 zigbee_driver_.setNetworkReady(true);
+                steering_retry_task_running_ = false;
             }
         } else {
             ESP_LOGW(kTag, "BDB start/reboot failed, status=%u", status);
@@ -96,9 +101,11 @@ bool ZigbeeController::handleAppSignal(const ezb_app_signal_t *signal)
         if (status == EZB_BDB_STATUS_SUCCESS) {
             ESP_LOGI(kTag, "router network steering complete");
             zigbee_driver_.setNetworkReady(true);
+            steering_retry_task_running_ = false;
         } else {
             ESP_LOGW(kTag, "router network steering failed, status=%u", status);
             zigbee_driver_.setNetworkReady(false);
+            scheduleSteeringRetry();
         }
         break;
 
@@ -141,6 +148,11 @@ ZigbeeController *ZigbeeController::instance()
 void ZigbeeController::taskEntry(void *arg)
 {
     static_cast<ZigbeeController *>(arg)->task();
+}
+
+void ZigbeeController::steeringRetryTaskEntry(void *arg)
+{
+    static_cast<ZigbeeController *>(arg)->steeringRetryTask();
 }
 
 bool ZigbeeController::appSignalHandler(const ezb_app_signal_t *signal)
@@ -211,6 +223,55 @@ void ZigbeeController::task()
     ESP_LOGI(kTag, "entering Zigbee main loop");
     zigbee_driver_.runMainLoop();
     vTaskDelete(nullptr);
+}
+
+void ZigbeeController::steeringRetryTask()
+{
+    vTaskDelay(pdMS_TO_TICKS(ZIGBEE_STEERING_RETRY_DELAY_MS));
+
+    if (zigbee_driver_.isNetworkReady()) {
+        steering_retry_task_running_ = false;
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    ESP_LOGI(kTag, "retrying network steering; keep Zigbee2MQTT permit join open");
+    esp_err_t err = zigbee_driver_.postCommissioning(EZB_BDB_MODE_NETWORK_STEERING);
+    if (err != ESP_OK) {
+        ESP_LOGE(kTag, "network steering retry post failed: %s", esp_err_to_name(err));
+        steering_retry_task_running_ = false;
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    steering_retry_task_running_ = false;
+    vTaskDelete(nullptr);
+}
+
+void ZigbeeController::scheduleSteeringRetry()
+{
+    if (steering_retry_task_running_) {
+        return;
+    }
+
+    BaseType_t ok = xTaskCreate(
+        steeringRetryTaskEntry,
+        "zb_steer_retry",
+        kSteeringRetryTaskStackSize,
+        this,
+        kSteeringRetryTaskPriority,
+        nullptr
+    );
+    if (ok == pdPASS) {
+        steering_retry_task_running_ = true;
+        ESP_LOGI(
+            kTag,
+            "network steering retry scheduled in %lums",
+            static_cast<unsigned long>(ZIGBEE_STEERING_RETRY_DELAY_MS)
+        );
+    } else {
+        ESP_LOGE(kTag, "failed to create network steering retry task");
+    }
 }
 
 const char *ZigbeeController::signalName(uint32_t signal) const

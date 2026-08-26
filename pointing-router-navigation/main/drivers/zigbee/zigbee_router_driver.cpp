@@ -21,6 +21,7 @@ esp_zigbee_config_t makeZigbeeConfig()
     esp_zigbee_config_t config = {};
     config.device_config.device_type = EZB_NWK_DEVICE_TYPE_ROUTER;
     config.device_config.install_code_policy = false;
+    config.device_config.zczr_config.max_children = ZIGBEE_ROUTER_MAX_CHILDREN;
     config.platform_config.storage_partition_name = nullptr;
     config.platform_config.radio_config.radio_mode = ESP_ZIGBEE_RADIO_MODE_NATIVE;
     return config;
@@ -40,6 +41,14 @@ esp_err_t ZigbeeRouterDriver::init()
     if (err != ESP_OK) {
         return err;
     }
+
+    err = esp_zigbee_err_to_esp(ezb_bdb_set_secondary_channel_set(ZIGBEE_SECONDARY_CHANNEL_MASK));
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    ezb_bdb_set_scan_duration(ZIGBEE_BDB_SCAN_DURATION);
+    ezb_bdb_set_router_rejoin_required(true);
 
     initialized_ = true;
     return ESP_OK;
@@ -126,6 +135,21 @@ void ZigbeeRouterDriver::runMainLoop()
 esp_err_t ZigbeeRouterDriver::startCommissioning(ezb_bdb_comm_mode_mask_t mode_mask)
 {
     return esp_zigbee_err_to_esp(ezb_bdb_start_top_level_commissioning(mode_mask));
+}
+
+esp_err_t ZigbeeRouterDriver::postCommissioning(ezb_bdb_comm_mode_mask_t mode_mask)
+{
+    pending_commissioning_mode_ = mode_mask;
+    return esp_zigbee_task_queue_post(commissioningTaskCallback, this);
+}
+
+void ZigbeeRouterDriver::commissioningTaskCallback(void *ctx)
+{
+    ZigbeeRouterDriver *driver = static_cast<ZigbeeRouterDriver *>(ctx);
+    if (driver == nullptr) {
+        return;
+    }
+    (void)ezb_bdb_start_top_level_commissioning(driver->pending_commissioning_mode_);
 }
 
 esp_err_t ZigbeeRouterDriver::setRxOnWhenIdle(bool enabled)
