@@ -1,0 +1,10 @@
+#pragma once
+
+#include <stdint.h>
+
+#define ROUTER_POINT_DEFAULT_ID 0x0101U
+#define ROUTER_POINT_DEFAULT_X_CM 100U
+#define ROUTER_POINT_DEFAULT_Y_CM 250U
+#define ROUTER_POINT_DEFAULT_RESPONSE_ENABLED true
+
+#define STATUS_LED_GPIO (-1)
