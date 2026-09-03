@@ -127,14 +127,26 @@ void RouterPointController::eventTask()
             );
         } else if (result.status != AppStatus::kInvalidCluster &&
                    result.status != AppStatus::kInvalidCommand) {
-            ESP_LOGW(
-                kTag,
-                "frame rejected, src=0x%04x cluster=0x%04x cmd=0x%02x status=%s",
-                frame.src_short_addr,
-                frame.cluster_id,
-                frame.command_id,
-                statusName(result.status)
-            );
+            if (result.status == AppStatus::kDriverError) {
+                ESP_LOGW(
+                    kTag,
+                    "frame rejected, src=0x%04x cluster=0x%04x cmd=0x%02x status=%s err=%s",
+                    frame.src_short_addr,
+                    frame.cluster_id,
+                    frame.command_id,
+                    statusName(result.status),
+                    esp_err_to_name(result.driver_error)
+                );
+            } else {
+                ESP_LOGW(
+                    kTag,
+                    "frame rejected, src=0x%04x cluster=0x%04x cmd=0x%02x status=%s",
+                    frame.src_short_addr,
+                    frame.cluster_id,
+                    frame.command_id,
+                    statusName(result.status)
+                );
+            }
         }
     }
 }

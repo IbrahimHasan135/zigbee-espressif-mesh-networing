@@ -29,4 +29,3 @@ private:
     size_t sample_count_ = 0;
     bool cycle_active_ = false;
 };
-

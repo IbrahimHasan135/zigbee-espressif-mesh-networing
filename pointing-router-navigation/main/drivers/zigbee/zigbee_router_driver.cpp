@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstring>
 
+#include "freertos/FreeRTOS.h"
+
 #include "ezbee/af.h"
 #include "ezbee/bdb.h"
 #include "ezbee/core.h"
@@ -168,6 +170,11 @@ esp_err_t ZigbeeRouterDriver::sendPingResponse(uint16_t dst_short_addr,
     if (payload == nullptr || payload_len == 0) {
         return ESP_ERR_INVALID_ARG;
     }
+    if (payload_len > sizeof(tx_payload_)) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+
+    std::memcpy(tx_payload_, payload, payload_len);
 
     ezb_zcl_custom_cluster_cmd_t response = {};
     response.cmd_ctrl.dst_addr.addr_mode = EZB_ADDR_MODE_SHORT;
@@ -181,9 +188,9 @@ esp_err_t ZigbeeRouterDriver::sendPingResponse(uint16_t dst_short_addr,
     response.cmd_ctrl.fc.dis_default_rsp = 1;
     response.cmd_id = CMD_PING_RSP;
     response.data_length = payload_len;
-    response.data = const_cast<uint8_t *>(payload);
+    response.data = tx_payload_;
 
-    if (!esp_zigbee_lock_acquire(0)) {
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(ZIGBEE_SEND_LOCK_TIMEOUT_MS))) {
         return ESP_ERR_TIMEOUT;
     }
     esp_err_t err = esp_zigbee_err_to_esp(ezb_zcl_custom_cluster_cmd_req(&response));

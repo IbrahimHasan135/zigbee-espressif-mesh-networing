@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+#include "esp_err.h"
+
 #include "common/app_error.h"
 #include "common/nav_protocol.h"
 
@@ -38,6 +40,7 @@ struct PingResponsePayload {
 
 struct RouterPointProcessResult {
     AppStatus status = AppStatus::kOk;
+    esp_err_t driver_error = ESP_OK;
     uint16_t sender_short_addr = 0;
     uint16_t sequence_id = 0;
     bool has_sequence_id = false;

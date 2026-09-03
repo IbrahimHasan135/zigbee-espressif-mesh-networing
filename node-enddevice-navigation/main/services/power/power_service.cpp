@@ -18,6 +18,9 @@ esp_err_t PowerService::init()
     if (loaded_config.listen_window_ms == 0) {
         loaded_config.listen_window_ms = NAVIGATION_LISTEN_WINDOW_MS;
     }
+    if (loaded_config.listen_window_ms < NAVIGATION_MIN_LISTEN_WINDOW_MS) {
+        loaded_config.listen_window_ms = NAVIGATION_MIN_LISTEN_WINDOW_MS;
+    }
     if (loaded_config.sleep_interval_ms == 0) {
         loaded_config.sleep_interval_ms = NAVIGATION_SLEEP_INTERVAL_MS;
     }
@@ -62,4 +65,3 @@ esp_err_t PowerService::executePlan(const PowerPlan &plan)
     }
     return ESP_OK;
 }
-

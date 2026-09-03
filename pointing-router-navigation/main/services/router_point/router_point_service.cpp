@@ -41,6 +41,7 @@ RouterPointProcessResult RouterPointService::handleIncomingFrame(const ZigbeeFra
         response.bytes,
         response.len
     );
+    result.driver_error = err;
     result.status = err == ESP_OK ? AppStatus::kOk : AppStatus::kDriverError;
     return result;
 }

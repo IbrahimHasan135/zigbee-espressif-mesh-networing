@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstring>
 
+#include "freertos/FreeRTOS.h"
+
 #include "ezbee/af.h"
 #include "ezbee/bdb.h"
 #include "ezbee/core.h"
@@ -42,6 +44,13 @@ esp_err_t ZigbeeEndDeviceDriver::init()
     if (err != ESP_OK) {
         return err;
     }
+
+    err = esp_zigbee_err_to_esp(ezb_bdb_set_secondary_channel_set(ZIGBEE_SECONDARY_CHANNEL_MASK));
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    ezb_bdb_set_scan_duration(ZIGBEE_BDB_SCAN_DURATION);
 
     initialized_ = true;
     return ESP_OK;
@@ -130,6 +139,21 @@ esp_err_t ZigbeeEndDeviceDriver::startCommissioning(ezb_bdb_comm_mode_mask_t mod
     return esp_zigbee_err_to_esp(ezb_bdb_start_top_level_commissioning(mode_mask));
 }
 
+esp_err_t ZigbeeEndDeviceDriver::postCommissioning(ezb_bdb_comm_mode_mask_t mode_mask)
+{
+    pending_commissioning_mode_ = mode_mask;
+    return esp_zigbee_task_queue_post(commissioningTaskCallback, this);
+}
+
+void ZigbeeEndDeviceDriver::commissioningTaskCallback(void *ctx)
+{
+    ZigbeeEndDeviceDriver *driver = static_cast<ZigbeeEndDeviceDriver *>(ctx);
+    if (driver == nullptr) {
+        return;
+    }
+    (void)ezb_bdb_start_top_level_commissioning(driver->pending_commissioning_mode_);
+}
+
 esp_err_t ZigbeeEndDeviceDriver::configureSleep(bool enable, uint32_t threshold_ms)
 {
     (void)enable;
@@ -149,8 +173,7 @@ esp_err_t ZigbeeEndDeviceDriver::sendBroadcastPing(uint16_t sequence_id)
         return ESP_ERR_INVALID_STATE;
     }
 
-    uint8_t payload[2] = {};
-    writeU16Be(payload, sequence_id);
+    writeU16Be(tx_payload_, sequence_id);
 
     ezb_zcl_custom_cluster_cmd_t request = {};
     request.cmd_ctrl.dst_addr.addr_mode = EZB_ADDR_MODE_SHORT;
@@ -163,10 +186,10 @@ esp_err_t ZigbeeEndDeviceDriver::sendBroadcastPing(uint16_t sequence_id)
     request.cmd_ctrl.fc.direction = EZB_ZCL_CMD_DIRECTION_TO_SRV;
     request.cmd_ctrl.fc.dis_default_rsp = 1;
     request.cmd_id = CMD_PING_REQ;
-    request.data_length = sizeof(payload);
-    request.data = payload;
+    request.data_length = 2;
+    request.data = tx_payload_;
 
-    if (!esp_zigbee_lock_acquire(0)) {
+    if (!esp_zigbee_lock_acquire(pdMS_TO_TICKS(ZIGBEE_SEND_LOCK_TIMEOUT_MS))) {
         return ESP_ERR_TIMEOUT;
     }
     esp_err_t err = esp_zigbee_err_to_esp(ezb_zcl_custom_cluster_cmd_req(&request));

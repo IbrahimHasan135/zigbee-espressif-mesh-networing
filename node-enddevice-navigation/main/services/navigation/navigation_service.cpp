@@ -90,7 +90,8 @@ AppStatus NavigationService::decodeResponse(const ZigbeeFrame &frame, NavAnchorS
         out_sample.y_cm = static_cast<float>(readU16Be(&frame.payload[2]));
     } else if (frame.payload_len >= 8) {
         const uint16_t sequence_id = readU16Be(&frame.payload[0]);
-        if (sequence_id != active_sequence_id_) {
+        const uint16_t sequence_delay = static_cast<uint16_t>(active_sequence_id_ - sequence_id);
+        if (sequence_delay > NAVIGATION_MAX_ACCEPTED_SEQUENCE_DELAY_CYCLES) {
             return AppStatus::kSequenceMismatch;
         }
         out_sample.sequence_id = sequence_id;
@@ -106,4 +107,3 @@ AppStatus NavigationService::decodeResponse(const ZigbeeFrame &frame, NavAnchorS
     out_sample.lqi = frame.lqi;
     return AppStatus::kOk;
 }
-

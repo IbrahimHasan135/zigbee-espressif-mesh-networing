@@ -4,6 +4,8 @@
 #include "esp_log.h"
 #include "freertos/task.h"
 
+#include "common/byte_utils.h"
+#include "common/nav_types.h"
 #include "config/app_config.h"
 
 namespace {
@@ -170,13 +172,15 @@ void NavigationController::cycleTask()
                 result.position.confidence
             );
         } else {
-            ESP_LOGW(
-                kTag,
-                "cycle ended without position, sequence=%u samples=%u status=%s",
-                result.sequence_id,
-                static_cast<unsigned>(result.sample_count),
-                statusName(result.status)
-            );
+            if (result.status != AppStatus::kNotEnoughSamples) {
+                ESP_LOGW(
+                    kTag,
+                    "cycle ended without position, sequence=%u samples=%u status=%s",
+                    result.sequence_id,
+                    static_cast<unsigned>(result.sample_count),
+                    statusName(result.status)
+                );
+            }
         }
 
         const PowerPlan plan = power_service_.makePlan(result);
@@ -214,15 +218,35 @@ void NavigationController::eventTask()
         AppStatus status = navigation_service_.acceptFrame(frame, received_at_ms);
         const uint16_t active_sequence_id = navigation_service_.activeSequenceId();
         const size_t sample_count = navigation_service_.sampleCount();
+        uint16_t accepted_sequence_id = active_sequence_id;
+        if (status == AppStatus::kOk && sample_count > 0) {
+            accepted_sequence_id = navigation_service_.samples()[sample_count - 1].sequence_id;
+        }
+        const uint16_t accepted_delay_cycles = static_cast<uint16_t>(
+            active_sequence_id - accepted_sequence_id
+        );
         xSemaphoreGive(service_mutex_);
         if (status == AppStatus::kOk) {
             ESP_LOGI(
                 kTag,
-                "sample accepted, sequence=%u router=0x%04x rssi=%d samples=%u",
+                "sample accepted, active_seq=%u sample_seq=%u delay_cycles=%u router=0x%04x rssi=%d samples=%u",
                 active_sequence_id,
+                accepted_sequence_id,
+                accepted_delay_cycles,
                 frame.src_short_addr,
                 frame.rssi,
                 static_cast<unsigned>(sample_count)
+            );
+        } else if (status == AppStatus::kSequenceMismatch && frame.payload_len >= 2) {
+            ESP_LOGW(
+                kTag,
+                "frame rejected, src=0x%04x cluster=0x%04x cmd=0x%02x status=%s active_seq=%u received_seq=%u",
+                frame.src_short_addr,
+                frame.cluster_id,
+                frame.command_id,
+                statusName(status),
+                active_sequence_id,
+                readU16Be(&frame.payload[0])
             );
         } else if (status != AppStatus::kIgnored &&
                    status != AppStatus::kInvalidCluster &&

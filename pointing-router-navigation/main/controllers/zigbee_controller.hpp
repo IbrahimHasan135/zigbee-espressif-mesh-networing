@@ -22,7 +22,7 @@ public:
 
 private:
     static void taskEntry(void *arg);
-    static void steeringRetryTaskEntry(void *arg);
+    static void commissioningRetryTaskEntry(void *arg);
     static bool appSignalHandler(const ezb_app_signal_t *signal);
     static ezb_zcl_status_t customClusterCommandHandler(const ezb_zcl_cmd_hdr_t *header,
                                                         const uint8_t *payload,
@@ -30,12 +30,14 @@ private:
     static ZigbeeController *instance();
 
     void task();
-    void steeringRetryTask();
-    void scheduleSteeringRetry();
+    void commissioningRetryTask();
+    void scheduleCommissioningRetry(ezb_bdb_comm_mode_mask_t mode_mask);
+    const char *commissioningModeName(ezb_bdb_comm_mode_mask_t mode_mask) const;
     const char *signalName(uint32_t signal) const;
 
     ZigbeeRouterDriver &zigbee_driver_;
     RouterPointController &router_point_controller_;
-    bool steering_retry_task_running_ = false;
+    ezb_bdb_comm_mode_mask_t retry_commissioning_mode_ = 0;
+    bool commissioning_retry_task_running_ = false;
     static ZigbeeController *instance_;
 };

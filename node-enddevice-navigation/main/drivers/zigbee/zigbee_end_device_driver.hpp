@@ -3,6 +3,7 @@
 #include "esp_err.h"
 #include "esp_zigbee.h"
 #include "ezbee/app_signals.h"
+#include "ezbee/bdb.h"
 #include "ezbee/zcl/cluster/custom.h"
 
 #include "common/nav_types.h"
@@ -17,6 +18,7 @@ public:
     void runMainLoop();
 
     esp_err_t startCommissioning(ezb_bdb_comm_mode_mask_t mode_mask);
+    esp_err_t postCommissioning(ezb_bdb_comm_mode_mask_t mode_mask);
     esp_err_t configureSleep(bool enable, uint32_t threshold_ms);
     esp_err_t setRxOnWhenIdle(bool enabled);
     esp_err_t sendBroadcastPing(uint16_t sequence_id);
@@ -30,6 +32,10 @@ public:
     bool isNetworkReady() const;
 
 private:
+    static void commissioningTaskCallback(void *ctx);
+
+    uint8_t tx_payload_[32] = {};
+    ezb_bdb_comm_mode_mask_t pending_commissioning_mode_ = 0;
     bool initialized_ = false;
     bool network_ready_ = false;
 };

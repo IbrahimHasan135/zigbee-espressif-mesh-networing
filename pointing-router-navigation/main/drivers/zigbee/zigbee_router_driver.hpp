@@ -35,6 +35,7 @@ public:
 private:
     static void commissioningTaskCallback(void *ctx);
 
+    uint8_t tx_payload_[32] = {};
     ezb_bdb_comm_mode_mask_t pending_commissioning_mode_ = 0;
     bool initialized_ = false;
     bool network_ready_ = false;
