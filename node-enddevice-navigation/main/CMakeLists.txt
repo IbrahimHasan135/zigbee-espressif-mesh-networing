@@ -7,11 +7,14 @@ idf_component_register(
         "drivers/zigbee/zigbee_end_device_driver.cpp"
         "drivers/power/power_driver.cpp"
         "drivers/storage/storage_driver.cpp"
+        "drivers/serial/serial_telemetry_driver.cpp"
         "services/navigation/navigation_service.cpp"
         "services/positioning/positioning_service.cpp"
         "services/power/power_service.cpp"
+        "services/telemetry/rssi_telemetry_service.cpp"
     INCLUDE_DIRS
         "."
     REQUIRES
+        esp_driver_uart
         nvs_flash
 )

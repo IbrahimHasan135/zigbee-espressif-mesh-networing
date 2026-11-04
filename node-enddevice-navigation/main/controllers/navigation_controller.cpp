@@ -17,10 +17,12 @@ constexpr uint32_t kQueueDepth = 16;
 
 NavigationController::NavigationController(NavigationService &navigation_service,
                                            PositioningService &positioning_service,
-                                           PowerService &power_service)
+                                           PowerService &power_service,
+                                           RssiTelemetryService &telemetry_service)
     : navigation_service_(navigation_service),
       positioning_service_(positioning_service),
-      power_service_(power_service)
+      power_service_(power_service),
+      telemetry_service_(telemetry_service)
 {
 }
 
@@ -153,6 +155,12 @@ void NavigationController::cycleTask()
             position
         );
 
+        const RssiTelemetrySnapshot telemetry_snapshot =
+            telemetry_service_.makeSnapshot(
+                sequence_id_,
+                navigation_service_.samples(),
+                navigation_service_.sampleCount());
+
         NavigationCycleResult result = navigation_service_.finishCycle(
             position_status == AppStatus::kOk ? &position : nullptr
         );
@@ -160,6 +168,14 @@ void NavigationController::cycleTask()
             result.status = position_status;
         }
         xSemaphoreGive(service_mutex_);
+
+        err = telemetry_service_.publish(telemetry_snapshot);
+        if (err != ESP_OK) {
+            ESP_LOGW(kTag,
+                     "serial telemetry failed, sequence=%u err=%s",
+                     sequence_id_,
+                     esp_err_to_name(err));
+        }
 
         if (result.status == AppStatus::kOk) {
             ESP_LOGI(
