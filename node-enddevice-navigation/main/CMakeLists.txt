@@ -1,2 +1,17 @@
-idf_component_register(SRCS "main.c"
-                    INCLUDE_DIRS ".")
+idf_component_register(
+    SRCS
+        "app_main.cpp"
+        "controllers/app_controller.cpp"
+        "controllers/zigbee_controller.cpp"
+        "controllers/navigation_controller.cpp"
+        "drivers/zigbee/zigbee_end_device_driver.cpp"
+        "drivers/power/power_driver.cpp"
+        "drivers/storage/storage_driver.cpp"
+        "services/navigation/navigation_service.cpp"
+        "services/positioning/positioning_service.cpp"
+        "services/power/power_service.cpp"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        nvs_flash
+)
