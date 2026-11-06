@@ -17,13 +17,14 @@ constexpr uint32_t kQueueDepth = 16;
 
 NavigationController::NavigationController(NavigationService &navigation_service,
                                            PositioningService &positioning_service,
-                                           PowerService &power_service)
+                                           PowerService &power_service,
+                                           RssiTelemetryService &telemetry_service)
     : navigation_service_(navigation_service),
       positioning_service_(positioning_service),
-      power_service_(power_service)
+      power_service_(power_service),
+      telemetry_service_(telemetry_service)
 {
 }
-
 esp_err_t NavigationController::init()
 {
     frame_queue_ = xQueueCreate(kQueueDepth, sizeof(ZigbeeFrame));
@@ -107,13 +108,13 @@ void NavigationController::cycleTask()
     const NodeConfig &config = power_service_.config();
     ESP_LOGI(
         kTag,
-        "cycle task running, node_id=0x%04x listen=%lums sleep=%lums retry=%lums",
+        "cycle task running, node_id=0x%04x listen=%lums serial_period=%lums sleep=disabled",
         config.node_id,
         static_cast<unsigned long>(config.listen_window_ms),
-        static_cast<unsigned long>(config.sleep_interval_ms),
-        static_cast<unsigned long>(config.retry_interval_ms)
+        static_cast<unsigned long>(NAVIGATION_SERIAL_CYCLE_PERIOD_MS)
     );
 
+    TickType_t last_cycle_tick = xTaskGetTickCount();
     while (true) {
         sequence_id_++;
         if (sequence_id_ == 0) {
@@ -138,7 +139,19 @@ void NavigationController::cycleTask()
             NavigationCycleResult result = navigation_service_.finishCycle(nullptr);
             xSemaphoreGive(service_mutex_);
             (void)result;
-            vTaskDelay(pdMS_TO_TICKS(config.retry_interval_ms));
+            const RssiTelemetrySnapshot empty_snapshot =
+                telemetry_service_.makeSnapshot(sequence_id_, nullptr, 0);
+            const esp_err_t telemetry_err =
+                telemetry_service_.publish(empty_snapshot);
+            if (telemetry_err != ESP_OK) {
+                ESP_LOGW(kTag,
+                         "zero-value serial telemetry failed, sequence=%u err=%s",
+                         sequence_id_,
+                         esp_err_to_name(telemetry_err));
+            }
+            vTaskDelayUntil(
+                &last_cycle_tick,
+                pdMS_TO_TICKS(NAVIGATION_SERIAL_CYCLE_PERIOD_MS));
             continue;
         }
 
@@ -153,6 +166,12 @@ void NavigationController::cycleTask()
             position
         );
 
+        const RssiTelemetrySnapshot telemetry_snapshot =
+            telemetry_service_.makeSnapshot(
+                sequence_id_,
+                navigation_service_.samples(),
+                navigation_service_.sampleCount());
+
         NavigationCycleResult result = navigation_service_.finishCycle(
             position_status == AppStatus::kOk ? &position : nullptr
         );
@@ -160,6 +179,14 @@ void NavigationController::cycleTask()
             result.status = position_status;
         }
         xSemaphoreGive(service_mutex_);
+
+        err = telemetry_service_.publish(telemetry_snapshot);
+        if (err != ESP_OK) {
+            ESP_LOGW(kTag,
+                     "serial telemetry failed, sequence=%u err=%s",
+                     sequence_id_,
+                     esp_err_to_name(err));
+        }
 
         if (result.status == AppStatus::kOk) {
             ESP_LOGI(
@@ -183,26 +210,13 @@ void NavigationController::cycleTask()
             }
         }
 
-        const PowerPlan plan = power_service_.makePlan(result);
-        ESP_LOGI(
-            kTag,
-            "power plan, decision=%s delay=%lums",
-            powerDecisionName(plan.decision),
-            static_cast<unsigned long>(plan.delay_ms)
-        );
-
-        if (plan.decision == PowerDecision::kDeepSleep) {
-            ESP_LOGI(kTag, "entering deep sleep");
-            err = power_service_.executePlan(plan);
-            ESP_LOGE(kTag, "deep sleep request failed: %s", esp_err_to_name(err));
-            vTaskDelay(pdMS_TO_TICKS(config.retry_interval_ms));
-            continue;
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(plan.delay_ms));
+        ESP_LOGI(kTag,
+                 "serial telemetry cycle complete; device remains awake");
+        vTaskDelayUntil(
+            &last_cycle_tick,
+            pdMS_TO_TICKS(NAVIGATION_SERIAL_CYCLE_PERIOD_MS));
     }
 }
-
 void NavigationController::eventTask()
 {
     ESP_LOGI(kTag, "event task running");
@@ -292,20 +306,6 @@ const char *NavigationController::statusName(AppStatus status) const
         return "not_enough_samples";
     case AppStatus::kDriverError:
         return "driver_error";
-    default:
-        return "unknown";
-    }
-}
-
-const char *NavigationController::powerDecisionName(PowerDecision decision) const
-{
-    switch (decision) {
-    case PowerDecision::kStayAwake:
-        return "stay_awake";
-    case PowerDecision::kRetrySoon:
-        return "retry_soon";
-    case PowerDecision::kDeepSleep:
-        return "deep_sleep";
     default:
         return "unknown";
     }

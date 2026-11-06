@@ -8,12 +8,14 @@
 #include "services/navigation/navigation_service.hpp"
 #include "services/positioning/positioning_service.hpp"
 #include "services/power/power_service.hpp"
+#include "services/telemetry/rssi_telemetry_service.hpp"
 
 class NavigationController {
 public:
     NavigationController(NavigationService &navigation_service,
                          PositioningService &positioning_service,
-                         PowerService &power_service);
+                         PowerService &power_service,
+                         RssiTelemetryService &telemetry_service);
 
     esp_err_t init();
     esp_err_t start();
@@ -26,11 +28,11 @@ private:
     void cycleTask();
     void eventTask();
     const char *statusName(AppStatus status) const;
-    const char *powerDecisionName(PowerDecision decision) const;
 
     NavigationService &navigation_service_;
     PositioningService &positioning_service_;
     PowerService &power_service_;
+    RssiTelemetryService &telemetry_service_;
     QueueHandle_t frame_queue_ = nullptr;
     SemaphoreHandle_t service_mutex_ = nullptr;
     uint16_t sequence_id_ = 0;
