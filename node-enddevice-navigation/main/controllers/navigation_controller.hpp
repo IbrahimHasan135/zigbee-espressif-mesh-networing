@@ -28,7 +28,6 @@ private:
     void cycleTask();
     void eventTask();
     const char *statusName(AppStatus status) const;
-    const char *powerDecisionName(PowerDecision decision) const;
 
     NavigationService &navigation_service_;
     PositioningService &positioning_service_;

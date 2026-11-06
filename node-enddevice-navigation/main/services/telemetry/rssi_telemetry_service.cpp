@@ -55,7 +55,7 @@ esp_err_t RssiTelemetryService::publish(
         if (snapshot.routers[i].valid) {
             snprintf(values[i], sizeof(values[i]), "%d", snapshot.routers[i].rssi);
         } else {
-            snprintf(values[i], sizeof(values[i]), "null");
+            snprintf(values[i], sizeof(values[i]), "0");
         }
     }
 

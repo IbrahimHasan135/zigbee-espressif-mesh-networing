@@ -196,9 +196,11 @@ void ZigbeeController::task()
         ESP_LOGI(kTag, "rx_on_when_idle configured: %s", ZIGBEE_RX_ON_WHEN_IDLE ? "true" : "false");
     }
 
-    err = zigbee_driver_.configureSleep(true, 20);
+    err = zigbee_driver_.configureSleep(false, 0);
     if (err != ESP_OK) {
-        ESP_LOGW(kTag, "failed to enable Zigbee sleep threshold: %s", esp_err_to_name(err));
+        ESP_LOGW(kTag, "failed to disable Zigbee sleep: %s", esp_err_to_name(err));
+    } else {
+        ESP_LOGI(kTag, "Zigbee sleep disabled for continuous serial telemetry");
     }
 
     ESP_LOGI(kTag, "registering Zigbee endpoint and custom navigation cluster");
