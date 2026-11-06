@@ -25,7 +25,7 @@ esp_err_t SerialTelemetryDriver::init()
     if (err == ESP_OK) {
         err = uart_driver_install(
             NAVIGATION_TELEMETRY_UART_PORT,
-            0,
+            NAVIGATION_TELEMETRY_RX_BUFFER_SIZE,
             NAVIGATION_TELEMETRY_TX_BUFFER_SIZE,
             0,
             nullptr,
