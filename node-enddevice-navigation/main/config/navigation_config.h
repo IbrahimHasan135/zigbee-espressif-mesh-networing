@@ -14,7 +14,8 @@
 #define NAVIGATION_MIN_SAMPLES_FOR_POSITION 2U
 #define NAVIGATION_MAX_ACCEPTED_SEQUENCE_DELAY_CYCLES 5U
 
-// Stable public telemetry order, matching value1..value4 on the RGBC node.
+// Logical router IDs remain available to the positioning layer. Serial RF
+// telemetry identifies each response by its current Zigbee short address.
 #define NAVIGATION_ROUTER_R1_ID 0x0101U
 #define NAVIGATION_ROUTER_R2_ID 0x0102U
 #define NAVIGATION_ROUTER_R3_ID 0x0103U

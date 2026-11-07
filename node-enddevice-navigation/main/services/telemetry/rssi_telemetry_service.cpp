@@ -2,8 +2,6 @@
 
 #include <stdio.h>
 
-#include "config/navigation_config.h"
-
 RssiTelemetryService::RssiTelemetryService(SerialTelemetryDriver &driver)
     : driver_(driver)
 {
@@ -28,16 +26,46 @@ RssiTelemetrySnapshot RssiTelemetryService::makeSnapshot(
     }
 
     for (size_t i = 0; i < sample_count; ++i) {
-        const int index = routerIndex(samples[i].router_id);
-        if (index < 0) {
+        const uint16_t short_addr = samples[i].router_short_addr;
+        int slot = -1;
+        int empty_slot = -1;
+        for (int j = 0; j < 4; ++j) {
+            if (snapshot.routers[j].valid &&
+                snapshot.routers[j].short_addr == short_addr) {
+                slot = j;
+                break;
+            }
+            if (!snapshot.routers[j].valid && empty_slot < 0) {
+                empty_slot = j;
+            }
+        }
+        if (slot < 0) {
+            slot = empty_slot;
+        }
+        if (slot < 0) {
             continue;
         }
 
-        // Deterministic duplicate policy: keep the strongest RSSI in a cycle.
-        if (!snapshot.routers[index].valid ||
-            samples[i].rssi > snapshot.routers[index].rssi) {
-            snapshot.routers[index].rssi = samples[i].rssi;
-            snapshot.routers[index].valid = true;
+        // Keep the strongest duplicate response from the same short address.
+        if (!snapshot.routers[slot].valid ||
+            samples[i].rssi > snapshot.routers[slot].rssi) {
+            snapshot.routers[slot].short_addr = short_addr;
+            snapshot.routers[slot].rssi = samples[i].rssi;
+            snapshot.routers[slot].valid = true;
+        }
+    }
+
+    // Stable output for a cycle even when Zigbee responses arrive randomly.
+    for (int i = 0; i < 3; ++i) {
+        for (int j = i + 1; j < 4; ++j) {
+            if (snapshot.routers[j].valid &&
+                (!snapshot.routers[i].valid ||
+                 snapshot.routers[j].short_addr <
+                     snapshot.routers[i].short_addr)) {
+                const RssiTelemetryValue temporary = snapshot.routers[i];
+                snapshot.routers[i] = snapshot.routers[j];
+                snapshot.routers[j] = temporary;
+            }
         }
     }
     return snapshot;
@@ -50,40 +78,34 @@ esp_err_t RssiTelemetryService::publish(
         return ESP_ERR_INVALID_STATE;
     }
 
-    char values[4][8] = {};
-    for (size_t i = 0; i < 4; ++i) {
-        if (snapshot.routers[i].valid) {
-            snprintf(values[i], sizeof(values[i]), "%d", snapshot.routers[i].rssi);
-        } else {
-            snprintf(values[i], sizeof(values[i]), "0");
+    char line[256] = {};
+    int length = snprintf(line, sizeof(line), "{\"type\":\"rf\",\"routers\":[");
+    bool first = true;
+    for (size_t i = 0; i < 4 && length > 0; ++i) {
+        if (!snapshot.routers[i].valid) {
+            continue;
         }
+        const int appended = snprintf(
+            line + length,
+            sizeof(line) - static_cast<size_t>(length),
+            "%s{\"short\":%u,\"rssi\":%d}",
+            first ? "" : ",",
+            static_cast<unsigned>(snapshot.routers[i].short_addr),
+            static_cast<int>(snapshot.routers[i].rssi));
+        if (appended <= 0 ||
+            appended >= static_cast<int>(sizeof(line) - length)) {
+            return ESP_ERR_INVALID_SIZE;
+        }
+        length += appended;
+        first = false;
     }
-
-    char line[96] = {};
-    const int length = snprintf(
-        line,
-        sizeof(line),
-        "{\"value1\":%s,\"value2\":%s,\"value3\":%s,\"value4\":%s}\n",
-        values[0], values[1], values[2], values[3]);
-    if (length <= 0 || length >= static_cast<int>(sizeof(line))) {
+    const int suffix = snprintf(
+        line + length,
+        sizeof(line) - static_cast<size_t>(length),
+        "]}\n");
+    if (suffix <= 0 || suffix >= static_cast<int>(sizeof(line) - length)) {
         return ESP_ERR_INVALID_SIZE;
     }
+    length += suffix;
     return driver_.writeLine(line, static_cast<size_t>(length));
-}
-
-int RssiTelemetryService::routerIndex(uint16_t router_id) const
-{
-    constexpr uint16_t ids[4] = {
-        NAVIGATION_ROUTER_R1_ID,
-        NAVIGATION_ROUTER_R2_ID,
-        NAVIGATION_ROUTER_R3_ID,
-        NAVIGATION_ROUTER_R4_ID,
-    };
-
-    for (int i = 0; i < 4; ++i) {
-        if (ids[i] != 0 && router_id == ids[i]) {
-            return i;
-        }
-    }
-    return -1;
 }

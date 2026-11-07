@@ -18,8 +18,6 @@ public:
     esp_err_t publish(const RssiTelemetrySnapshot &snapshot);
 
 private:
-    int routerIndex(uint16_t router_id) const;
-
     SerialTelemetryDriver &driver_;
     bool initialized_ = false;
 };
